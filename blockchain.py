@@ -1,22 +1,15 @@
 import random
 import sys
+import hashlib
+import json
 
 blockchain = []
 wallets = []
 open_transactions=[]
 origin_wallet = 0
+hash_prefix = "00"
 
 MINING_REWARD = 5
-
-def blockHash(block):
-    x = str([block[key] for key in block])
-    return x
-
-def print_blockchain_elements():
-    for block in blockchain:
-        print(block.index)
-        print(block)
-
 
 class Transaction:
     def __init__(self,sender,receiver,amount):
@@ -25,17 +18,38 @@ class Transaction:
         self.amount = amount
 
 class Block:
-    def __init__(self):
+    def __init__(self,nonce,pow_hash,prevBlockHash):
         super().__init__()
         if(len(blockchain)>0):
             self.index = len(blockchain)
-            self.prevBlockHash = blockHash(blockchain[-1])
+            self.prevBlockHash = prevBlockHash
             self.transactions = open_transactions
+            self.nonce = nonce
+            self.pow_hash = pow_hash
         else:
             """Create genesis block"""
             self.index = 0 
             self.prevBlockHash = ""
             self.transactions = []
+
+def blockHash(block):
+    x = hashlib.sha256(json.dumps(block).encode('utf-8'))
+    return x
+
+def verifyPoWHash(open_transactions,last_hash,nonce_guess):
+    guess_hash = hashlib.sha256((str(open_transactions)+str(last_hash)+str(nonce_guess)).encode('utf-8'))
+    return guess_hash[0:2] == hash_prefix 
+
+def proof_of_work(open_transactions,last_hash):
+    nonce_guess = 0
+    while not verifyPoWHash(open_transactions,last_hash,nonce_guess,hash_prefix):
+        nonce_guess+=1
+    return nonce_guess
+
+def print_blockchain_elements():
+    for block in blockchain:
+        print(block.index)
+        print(block)
 
 def verifyChain():
     verifiedChain = True
@@ -91,8 +105,12 @@ def mineCoin():
     """
     miner = random.randint(1,len(wallets)-1)
     addTransaction(sender_wallet=origin_wallet,receiver_wallet=miner,tx_amount=MINING_REWARD)
-    newblock = Block()
-    blockchain.append(newblock,open_transactions)
+    prev_block_hash = blockHash(blockchain[-1])
+    nonce = proof_of_work(open_transactions=open_transactions,prev_block_hash)
+    pow_hash = hashlib.sha256((str(open_transactions)+str(prev_block_hash)+str(nonce)).encode('utf-8'))
+    #code to calculate nonce will go here
+    newblock = Block(nonce,pow_hash,prev_block_hash)
+    blockchain.append(newblock)
     open_transactions = []
 
 def main():
