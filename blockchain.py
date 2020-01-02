@@ -2,12 +2,13 @@ import random
 import sys
 import hashlib
 import json
+import time
 
 blockchain = []
 wallets = []
 open_transactions=[]
 origin_wallet = 0
-hash_prefix = "00"
+hash_prefix = "00" #default
 
 MINING_REWARD = 5
 
@@ -16,28 +17,30 @@ class Transaction:
         self.sender = sender
         self.receiver = receiver
         self.amount = amount
-
+    def JSON(self):
+            return json.dumps(self.__dict__.copy(), sort_keys=True)
 class Block:
-    def __init__(self,nonce,pow_hash,prevBlockHash):
+    def __init__(self,nonce=0,pow_hash="",prevBlockHash=""):
+        """Default constructor values create genesis block"""
         super().__init__()
-        if(len(blockchain)>0):
             self.index = len(blockchain)
             self.prevBlockHash = prevBlockHash
             self.transactions = open_transactions
             self.nonce = nonce
             self.pow_hash = pow_hash
-        else:
-            """Create genesis block"""
-            self.index = 0 
-            self.prevBlockHash = ""
-            self.transactions = []
+            self.time = time.time()
+
+        def JSON(self):
+            return json.dumps(self.__dict__.copy(), sort_keys=True)
+
 
 def blockHash(block):
-    x = hashlib.sha256(json.dumps(block).encode('utf-8'))
+    x = hashlib.sha256(block.JSON()).hexdigest()
+    #sort keys is necessary because serialisation not guaranteed to retain order of dictionary, since python dictionaries are orderless
     return x
 
 def verifyPoWHash(open_transactions,last_hash,nonce_guess):
-    guess_hash = hashlib.sha256((str(open_transactions)+str(last_hash)+str(nonce_guess)).encode('utf-8'))
+    guess_hash = hashlib.sha256((str(open_transactions)+str(last_hash)+str(nonce_guess)).encode('utf-8')).hexdigest()
     return guess_hash[0:2] == hash_prefix 
 
 def proof_of_work(open_transactions,last_hash):
@@ -53,14 +56,14 @@ def print_blockchain_elements():
 
 def verifyChain():
     verifiedChain = True
-    for block in blockchain:
-        if block.index == 0:
-            continue
-        else:
+    for block in blockchain[1:]:
             if (blockHash(blockchain[block.index-1]) != block.prevBlockHash):
                 verifiedChain = False
                 break
-
+            elif verifyPoWHash(block.transactions,block.prevBlockHash,block.nonce):
+                verifiedChain = False
+                break
+            
     return verifiedChain
 
 
@@ -113,6 +116,33 @@ def mineCoin():
     blockchain.append(newblock)
     open_transactions = []
 
+def load_blockhain():
+    global blockchain, open_transactions
+    try:
+        b = open("blockchain","r")
+        o = open("openTransactions","r")
+        blockchain = json.loads(str(b.read())) #deserializing from json strings into objects
+        open_transactions = json.loads(str(o.read))
+    except FileNotFoundError as ex:
+        print("File Not Found.")
+    except IOError as ex:
+        print("Error reading blockchain from file.")
+    finally:
+        b.close()
+        o.close()
+
+def save_blockchain():
+    try:
+        b = open("blockchain","w")
+        o = open("openTransactions","w")
+        b.write(json.dumps([block.JSON() for block in blockchain])) #serialising into json strings and outputting to file
+        o.write(json.dumps(blockchain.JSON()))
+    except IOError as ex:
+        print("Error writing blockchain to file.")
+    finally:
+        b.close()
+        o.close()
+   
 def main():
     global blockchain,open_transactions,wallets,origin_wallet
 
