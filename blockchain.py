@@ -17,8 +17,12 @@ class Transaction:
         self.sender = sender
         self.receiver = receiver
         self.amount = amount
+
     def JSON(self):
             return json.dumps(self.__dict__.copy(), sort_keys=True)
+    def __repr__(self):
+        return str(self.__dict__)
+
 class Block:
     def __init__(self,nonce=0,pow_hash="",prevBlockHash=""):
         """Default constructor values create genesis block"""
@@ -29,9 +33,12 @@ class Block:
             self.nonce = nonce
             self.pow_hash = pow_hash
             self.time = time.time()
+    
+    def __repr__(self):
+        return str(self.__dict__)
 
-        def JSON(self):
-            return json.dumps(self.__dict__.copy(), sort_keys=True)
+    def JSON(self):
+        return json.dumps(self.__dict__.copy(), sort_keys=True)
 
 
 def blockHash(block):
@@ -136,7 +143,7 @@ def save_blockchain():
         b = open("blockchain","w")
         o = open("openTransactions","w")
         b.write(json.dumps([block.JSON() for block in blockchain])) #serialising into json strings and outputting to file
-        o.write(json.dumps(blockchain.JSON()))
+        o.write(json.dumps([transaction.JSON() for transaction in open_transactions]))
     except IOError as ex:
         print("Error writing blockchain to file.")
     finally:
