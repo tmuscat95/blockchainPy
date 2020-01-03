@@ -17,12 +17,12 @@ class Transaction:
         return str(self.__dict__)
 
 class Block:
-    def __init__(self,nonce=0,pow_hash="",prevBlockHash=""):
+    def __init__(self,nonce=0,pow_hash="",prevBlockHash="",transactions=[]):
         """Default constructor values create genesis block"""
         super().__init__()
             self.index = len(blockchain)
             self.prevBlockHash = prevBlockHash
-            self.transactions = open_transactions
+            self.transactions = transactions
             self.nonce = nonce
             self.pow_hash = pow_hash
             self.time = time.time()
@@ -122,12 +122,11 @@ class Blockchain:
         nonce = proof_of_work(open_transactions=open_transactions,last_hash=prev_block_hash)
         pow_hash = hashlib.sha256((str(open_transactions)+str(prev_block_hash)+str(nonce)).encode('utf-8'))
         #code to calculate nonce will go here
-        newblock = Block(nonce,pow_hash,prev_block_hash)
+        newblock = Block(nonce,pow_hash,prev_block_hash,self.open_transactions)
         self.blockchain.append(newblock)
         self.open_transactions = []
 
     def load_blockhain(self):
-        
         try:
             b = open("blockchain","r")
             o = open("openTransactions","r")
