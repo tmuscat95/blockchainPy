@@ -3,14 +3,7 @@ import sys
 import hashlib
 import json
 import time
-
-blockchain = []
-wallets = []
-open_transactions=[]
-origin_wallet = 0
-hash_prefix = "00" #default
-
-MINING_REWARD = 5
+import uuid
 
 class Transaction:
     def __init__(self,sender,receiver,amount):
@@ -45,54 +38,60 @@ class Block:
         #sort keys is necessary because serialisation not guaranteed to retain order of dictionary, since python dictionaries are orderless
         return x
 
+class Blockchain:
+    MINING_REWARD = 5
+    hash_prefix = "00"
 
-def verifyPoWHash(open_transactions,last_hash,nonce_guess):
-    guess_hash = hashlib.sha256((str(open_transactions)+str(last_hash)+str(nonce_guess)).encode('utf-8')).hexdigest()
-    return guess_hash[0:2] == hash_prefix 
-
-def proof_of_work(open_transactions,last_hash):
-    nonce_guess = 0
-    while not verifyPoWHash(open_transactions,last_hash,nonce_guess,hash_prefix):
-        nonce_guess+=1
-    return nonce_guess
-
-def print_blockchain_elements():
-    for block in blockchain:
-        print(block.index)
-        print(block)
-
-def verifyChain():
-    verifiedChain = True
-    for block in blockchain[1:]:
-            if (blockchain[block.index-1].get_block_hash() != block.prevBlockHash):
-                verifiedChain = False
-                break
-            elif not verifyPoWHash(block.transactions,block.prevBlockHash,block.nonce):
-                verifiedChain = False
-                break
-            
-    return verifiedChain
-
-
-def getBalance(walletID):
-    balance = 0
-    for transactionBlock in [block.transactions for block in blockchain]:
-        for transaction in transactionBlock:
-            if(transaction.sender==walletID):
-                balance -= transaction.amount
-            elif(transaction.receiver==walletID):
-                balance+= transaction.amount
+    def __init___(self,hosting_node_id):
+        self.blockchain = [Block()] #genesis block
+        self.open_transactions = []
+        self.origin_wallet = random.randint(0,sys.maxint)
+        self.wallets = [self.origin_wallet]
+        self.hosting_node_id = hosting_node_id
         
-    return balance
 
-def verify_open_transactions():
-    return all([verify_transaction(t.sender,t.amount) for t in open_transactions])
+    def verifyPoWHash(transactions,last_hash,nonce_guess):
+        guess_hash = hashlib.sha256((str(transactions)+str(last_hash)+str(nonce_guess)).encode('utf-8')).hexdigest()
+        return guess_hash[0:2] == hash_prefix 
 
+    def proof_of_work(self,last_hash):
+        nonce_guess = 0
+        while not verifyPoWHash(self.open_transactions,last_hash,nonce_guess,self.hash_prefix):
+            nonce_guess+=1
+        return nonce_guess
 
-def verify_transaction(sender_wallet,tx_amount):
+    def print_blockchain_elements(self):
+        for block in self.blockchain:
+            print(block.index)
+            print(block)
+
+    def verifyChain(self):
+        verifiedChain = True
+        for block in self.blockchain[1:]:
+                if (self.blockchain[block.index-1].get_block_hash() != block.prevBlockHash):
+                    verifiedChain = False
+                    break
+                elif not verifyPoWHash(block.transactions,block.prevBlockHash,block.nonce):
+                    verifiedChain = False
+                    break
+                
+        return verifiedChain
+
+    def getBalance(self,walletID):
+        balance = 0
+        for transactionBlock in [block.transactions for block in self.blockchain]:
+            for transaction in transactionBlock:
+                if(transaction.sender==walletID):
+                    balance -= transaction.amount
+                elif(transaction.receiver==walletID):
+                    balance += transaction.amount
+            
+        return balance
+
+    def verify_transaction(self,sender_wallet,tx_amount):
         #determines whether sender has enough balance to make transaction; takes into account open transactions as well to prevent double spending
-        balance = getBalance(sender_wallet)
-        for transaction in open_transactions:
+        balance = self.getBalance(sender_wallet)
+        for transaction in self.open_transactions:
             if(transaction.sender==sender_wallet):
                 balance -= transaction.amount
         
@@ -101,118 +100,123 @@ def verify_transaction(sender_wallet,tx_amount):
         else:
             return False
 
-def addTransaction(sender_wallet,receiver_wallet,tx_amount):
-    if verify_transaction(sender_wallet,tx_amount):
-        open_transactions.append(Transaction(sender=sender_wallet,receiver=receiver_wallet,amount=tx_amount))
-        return True
-    else:
-        return False
+    def verify_open_transactions(self):
+        return all([verify_transaction(t.sender,t.amount) for t in self.open_transactions])
 
-def mineCoin():
-    global open_transactions,blockchain
-    """assigns mining reward for block to miner wallet(random for now), is simply added to list of open transactions with origin wallet as sender
-        to be processed with other open transactions when new block is created.
-    """
-    miner = random.randint(1,len(wallets)-1)
-    addTransaction(sender_wallet=origin_wallet,receiver_wallet=miner,tx_amount=MINING_REWARD)
-    prev_block_hash = blockHash(blockchain[-1])
-    nonce = proof_of_work(open_transactions=open_transactions,prev_block_hash)
-    pow_hash = hashlib.sha256((str(open_transactions)+str(prev_block_hash)+str(nonce)).encode('utf-8'))
-    #code to calculate nonce will go here
-    newblock = Block(nonce,pow_hash,prev_block_hash)
-    blockchain.append(newblock)
-    open_transactions = []
 
-def load_blockhain():
-    global blockchain, open_transactions
-    try:
-        b = open("blockchain","r")
-        o = open("openTransactions","r")
-        blockchain = json.loads(str(b.read())) #deserializing from json strings into objects
-        open_transactions = json.loads(str(o.read))
-    except FileNotFoundError as ex:
-        print("File Not Found.")
-    except IOError as ex:
-        print("Error reading blockchain from file.")
-    finally:
-        b.close()
-        o.close()
-
-def save_blockchain():
-    try:
-        b = open("blockchain","w")
-        o = open("openTransactions","w")
-        b.write(json.dumps([block.JSON() for block in blockchain])) #serialising into json strings and outputting to file
-        o.write(json.dumps([transaction.JSON() for transaction in open_transactions]))
-    except IOError as ex:
-        print("Error writing blockchain to file.")
-    finally:
-        b.close()
-        o.close()
-   
-def main():
-    global blockchain,open_transactions,wallets,origin_wallet
-
-    genesis_block = Block()
-    blockchain += [genesis_block]
-    wallets.append(random.randint(0,sys.maxint)) #origin wallet
-    origin_wallet = wallets[0]
-
-    waiting_for_input = True
-    while waiting_for_input:
-        print('Please choose')
-        print('1: Add a new transaction value:')
-        print('2: Output the blockchain blocks:')
-        print('3: Mine new Block:')
-        print('4: Enter new wallet id:')
-        print('5: Get Balance:')
-        print('h: Manipulate the chain')
-        print('q: Quit')
-        user_choice = input()
-        if user_choice == '1':
-            sender_wallet = input("Enter Sender Wallet:")
-            recv_wallet = input("Enter Recipient Wallet:")
-            tx_amount = input("Enter Amount:")
-            # Add the transaction amount to the open_transactions
-            if not addTransaction(sender_wallet=sender_wallet,recv_wallet=recv_wallet,tx_amount=tx_amount):
-                print("Insufficient Balance.")
-            else:
-                print("Success.")
-
-        elif user_choice == '2':
-            print_blockchain_elements()
-        elif user_choice == '3':
-            mineCoin()
-        elif user_choice == '4':
-            wallets.append(input("Enter Wallet ID: "))
-        elif user_choice == '5':
-            print(getBalance(input("Enter Wallet ID: ")))
-        elif user_choice == '6':
-            if(verify_open_transactions()):
-                print("Open Transactions OK")
-            else:
-                print("Invalid transactions.")
-        elif user_choice == 'h':
-            # Make sure that you don't try to "hack" the blockchain if it's empty
-            if len(blockchain) >= 1:
-                blockchain[0] = [2]
-        elif user_choice == 'q':
-            # This will lead to the loop to exist because it's running condition becomes False
-            waiting_for_input = False
+    def addTransaction(self,sender_wallet,receiver_wallet,tx_amount):
+        if verify_transaction(sender_wallet,tx_amount):
+            self.open_transactions.append(Transaction(sender=sender_wallet,receiver=receiver_wallet,amount=tx_amount))
+            return True
         else:
-            print('Input was invalid, please pick a value from the list!')
-        if not verifyChain():
-            print_blockchain_elements()
-            print('Invalid blockchain!')
-            # Break out of the loop
-            break
-    else:
-        print('User left!')
+            return False
+
+    def mineCoin(self):
+        #global open_transactions,blockchain
+        """assigns mining reward for block to miner wallet(random for now), is simply added to list of open transactions with origin wallet as sender
+            to be processed with other open transactions when new block is created.
+        """
+        miner = self.hosting_node_id
+        addTransaction(sender_wallet=self.origin_wallet,receiver_wallet=miner,tx_amount=MINING_REWARD)
+        prev_block_hash = blockchain[-1].get_block_hash()
+        nonce = proof_of_work(open_transactions=open_transactions,last_hash=prev_block_hash)
+        pow_hash = hashlib.sha256((str(open_transactions)+str(prev_block_hash)+str(nonce)).encode('utf-8'))
+        #code to calculate nonce will go here
+        newblock = Block(nonce,pow_hash,prev_block_hash)
+        self.blockchain.append(newblock)
+        self.open_transactions = []
+
+    def load_blockhain(self):
+        
+        try:
+            b = open("blockchain","r")
+            o = open("openTransactions","r")
+            self.blockchain = json.loads(str(b.read())) #deserializing from json strings into objects
+            self.open_transactions = json.loads(str(o.read))
+        except FileNotFoundError as ex:
+            print("File Not Found.")
+        except IOError as ex:
+            print("Error reading blockchain from file.")
+        finally:
+            b.close()
+            o.close()
+
+    def save_blockchain(self):
+        try:
+            b = open("blockchain","w")
+            o = open("openTransactions","w")
+            b.write(json.dumps([block.JSON() for block in self.blockchain])) #serialising into json strings and outputting to file
+            o.write(json.dumps([transaction.JSON() for transaction in self.open_transactions]))
+        except IOError as ex:
+            print("Error writing blockchain to file.")
+        finally:
+            b.close()
+            o.close()
+   
+class Node:
+    def __init__(self,blockchain):
+        self.id = str(uuid.uuid4())
+        self.blockchain = Blockchain(self.id)
+
+    def listen_for_input(self):
+        waiting_for_input = True
+        while waiting_for_input:
+            print('Please choose')
+            print('1: Add a new transaction value:')
+            print('2: Output the blockchain blocks:')
+            print('3: Mine new Block:')
+            print('4: Enter new wallet id:')
+            print('5: Get Balance:')
+            print('h: Manipulate the chain')
+            print('q: Quit')
+            user_choice = input()
+            if user_choice == '1':
+                #sender_wallet = input("Enter Sender Wallet:")
+                recv_wallet = input("Enter Recipient Wallet:")
+                tx_amount = input("Enter Amount:")
+                # Add the transaction amount to the open_transactions
+                if not self.blockchain.addTransaction(sender_wallet=self.id,recv_wallet=recv_wallet,tx_amount=tx_amount):
+                    print("Insufficient Balance.")
+                else:
+                    print("Success.")
+
+            elif user_choice == '2':
+                self.blockchain.print_blockchain_elements()
+            elif user_choice == '3':
+                self.blockchain.mineCoin()
+            elif user_choice == '4':
+                self.blockchain.wallets.append(input("Enter Wallet ID: "))
+            elif user_choice == '5':
+                print(self.blockchain.getBalance(input("Enter Wallet ID: ")))
+            elif user_choice == '6':
+                if(self.blockchain.verify_open_transactions()):
+                    print("Open Transactions OK")
+                else:
+                    print("Invalid transactions.")
+            elif user_choice == 'h':
+                # Make sure that you don't try to "hack" the blockchain if it's empty
+                #if len(self.blockchain.blockchain) >= 1:
+                 #   blockchain[0] = [2]
+            elif user_choice == 'q':
+                # This will lead to the loop to exist because it's running condition becomes False
+                waiting_for_input = False
+            else:
+                print('Input was invalid, please pick a value from the list!')
+            if not verifyChain():
+                self.blockchain.print_blockchain_elements()
+                print('Invalid blockchain!')
+                # Break out of the loop
+                break
+        else:
+            print('User left!')
 
 
-    print('Done!')
+        print('Done!')
 
 
+def main():
+    node = Node()
+    node.listen_for_input()
 
 if(__name__=='__main__'):
     main()
