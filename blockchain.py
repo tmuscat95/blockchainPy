@@ -40,11 +40,11 @@ class Block:
     def JSON(self):
         return json.dumps(self.__dict__.copy(), sort_keys=True)
 
+    def get_block_hash(self):
+        x = hashlib.sha256(self.JSON()).hexdigest()
+        #sort keys is necessary because serialisation not guaranteed to retain order of dictionary, since python dictionaries are orderless
+        return x
 
-def blockHash(block):
-    x = hashlib.sha256(block.JSON()).hexdigest()
-    #sort keys is necessary because serialisation not guaranteed to retain order of dictionary, since python dictionaries are orderless
-    return x
 
 def verifyPoWHash(open_transactions,last_hash,nonce_guess):
     guess_hash = hashlib.sha256((str(open_transactions)+str(last_hash)+str(nonce_guess)).encode('utf-8')).hexdigest()
@@ -64,10 +64,10 @@ def print_blockchain_elements():
 def verifyChain():
     verifiedChain = True
     for block in blockchain[1:]:
-            if (blockHash(blockchain[block.index-1]) != block.prevBlockHash):
+            if (blockchain[block.index-1].get_block_hash() != block.prevBlockHash):
                 verifiedChain = False
                 break
-            elif verifyPoWHash(block.transactions,block.prevBlockHash,block.nonce):
+            elif not verifyPoWHash(block.transactions,block.prevBlockHash,block.nonce):
                 verifiedChain = False
                 break
             
