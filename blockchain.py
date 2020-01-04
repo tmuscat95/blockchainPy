@@ -4,29 +4,42 @@ import hashlib
 import json
 import time
 import uuid
+import binascii
+import numpy
+import Crypto.PublicKey.RSA as RSA
+import Crypto.Random as Random
+
+class Wallet:
+    def __init__(self):
+        self.private_key , self.public_key = Wallet.generate_keys()
+        
+    @staticmethod
+    def generate_keys():
+        private_key = RSA.generate(bits=1024,randfunc=Random.new().read)  
+        public_key = private_key.publickey().exportKey(format="DER")
+
+        return (binascii.hexlify(private_key),binascii.hexlify(public_key))
 
 class Transaction:
     def __init__(self,sender,receiver,amount):
         self.sender = sender
         self.receiver = receiver
         self.amount = amount
-
+        
     def JSON(self):
             return json.dumps(self.__dict__.copy(), sort_keys=True)
     def __repr__(self):
         return str(self.__dict__)
 
 class Block:
-    def __init__(self,nonce=0,pow_hash="",prevBlockHash="",transactions=[]):
-        """Default constructor values create genesis block"""
+    def __init__(self,nonce=0,pow_hash="",prevBlockHash="",transactions=[],index=0):
         super().__init__()
-            self.index = len(blockchain)
-            self.prevBlockHash = prevBlockHash
-            self.transactions = transactions
-            self.nonce = nonce
-            self.pow_hash = pow_hash
-            self.time = time.time()
-    
+        self.index = index
+        self.transactions = transactions
+        self.pow_hash = pow_hash
+        self.time = time.time()
+        self.prevBlockHash = prevBlockHash
+        self.nonce = nonce
     def __repr__(self):
         return str(self.__dict__)
 
@@ -39,24 +52,23 @@ class Block:
         return x
 
 class Blockchain:
-    MINING_REWARD = 5
-    hash_prefix = "00"
-
+    
     def __init___(self,hosting_node_id):
         self.blockchain = [Block()] #genesis block
         self.open_transactions = []
-        self.origin_wallet = random.randint(0,sys.maxint)
+        self.origin_wallet = Wallet()
         self.wallets = [self.origin_wallet]
         self.hosting_node_id = hosting_node_id
-        
-
-    def verifyPoWHash(transactions,last_hash,nonce_guess):
+        self.MINING_REWARD = 5
+        self.hash_prefix = "00"
+    
+    def verifyPoWHash(self,transactions,last_hash,nonce_guess):
         guess_hash = hashlib.sha256((str(transactions)+str(last_hash)+str(nonce_guess)).encode('utf-8')).hexdigest()
-        return guess_hash[0:2] == hash_prefix 
+        return guess_hash[0:2] == self.hash_prefix 
 
     def proof_of_work(self,last_hash):
         nonce_guess = 0
-        while not verifyPoWHash(self.open_transactions,last_hash,nonce_guess,self.hash_prefix):
+        while not self.verifyPoWHash(self.open_transactions,last_hash,nonce_guess):
             nonce_guess+=1
         return nonce_guess
 
@@ -71,7 +83,7 @@ class Blockchain:
                 if (self.blockchain[block.index-1].get_block_hash() != block.prevBlockHash):
                     verifiedChain = False
                     break
-                elif not verifyPoWHash(block.transactions,block.prevBlockHash,block.nonce):
+                elif not self.verifyPoWHash(block.transactions,block.prevBlockHash,block.nonce):
                     verifiedChain = False
                     break
                 
@@ -101,11 +113,11 @@ class Blockchain:
             return False
 
     def verify_open_transactions(self):
-        return all([verify_transaction(t.sender,t.amount) for t in self.open_transactions])
+        return all([self.verify_transaction(t.sender,t.amount) for t in self.open_transactions])
 
 
     def addTransaction(self,sender_wallet,receiver_wallet,tx_amount):
-        if verify_transaction(sender_wallet,tx_amount):
+        if self.verify_transaction(sender_wallet,tx_amount):
             self.open_transactions.append(Transaction(sender=sender_wallet,receiver=receiver_wallet,amount=tx_amount))
             return True
         else:
@@ -117,12 +129,12 @@ class Blockchain:
             to be processed with other open transactions when new block is created.
         """
         miner = self.hosting_node_id
-        addTransaction(sender_wallet=self.origin_wallet,receiver_wallet=miner,tx_amount=MINING_REWARD)
-        prev_block_hash = blockchain[-1].get_block_hash()
-        nonce = proof_of_work(open_transactions=open_transactions,last_hash=prev_block_hash)
-        pow_hash = hashlib.sha256((str(open_transactions)+str(prev_block_hash)+str(nonce)).encode('utf-8'))
+        self.addTransaction(sender_wallet=self.origin_wallet,receiver_wallet=miner,tx_amount=self.MINING_REWARD)
+        prev_block_hash = self.blockchain[-1].get_block_hash()
+        nonce = self.proof_of_work(last_hash=prev_block_hash)
+        pow_hash = hashlib.sha256((str(self.open_transactions)+str(prev_block_hash)+str(nonce)).encode('utf-8'))
         #code to calculate nonce will go here
-        newblock = Block(nonce,pow_hash,prev_block_hash,self.open_transactions)
+        newblock = Block(nonce,pow_hash,prev_block_hash,self.open_transactions,len(self.blockchain))
         self.blockchain.append(newblock)
         self.open_transactions = []
 
@@ -153,9 +165,10 @@ class Blockchain:
             o.close()
    
 class Node:
-    def __init__(self,blockchain):
+    def __init__(self,blockchain=None):
         self.id = str(uuid.uuid4())
-        self.blockchain = Blockchain(self.id)
+        if blockchain == None:
+            self.blockchain = Blockchain(self.id)
 
     def listen_for_input(self):
         waiting_for_input = True
@@ -174,7 +187,7 @@ class Node:
                 recv_wallet = input("Enter Recipient Wallet:")
                 tx_amount = input("Enter Amount:")
                 # Add the transaction amount to the open_transactions
-                if not self.blockchain.addTransaction(sender_wallet=self.id,recv_wallet=recv_wallet,tx_amount=tx_amount):
+                if not self.blockchain.addTransaction(sender_wallet=self.id,receiver_wallet=recv_wallet,tx_amount=tx_amount):
                     print("Insufficient Balance.")
                 else:
                     print("Success.")
@@ -193,6 +206,7 @@ class Node:
                 else:
                     print("Invalid transactions.")
             elif user_choice == 'h':
+                pass
                 # Make sure that you don't try to "hack" the blockchain if it's empty
                 #if len(self.blockchain.blockchain) >= 1:
                  #   blockchain[0] = [2]
@@ -201,7 +215,7 @@ class Node:
                 waiting_for_input = False
             else:
                 print('Input was invalid, please pick a value from the list!')
-            if not verifyChain():
+            if not self.blockchain.verifyChain():
                 self.blockchain.print_blockchain_elements()
                 print('Invalid blockchain!')
                 # Break out of the loop
